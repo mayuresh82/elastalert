@@ -1078,6 +1078,9 @@ Optional:
 ``query_key``: Group metric calculations by this field. For each unique value of the ``query_key`` field, the metric will be calculated and
 evaluated separately against the threshold(s).
 
+``min_doc_count``: The minimum number of events in the current window needed for an alert to trigger.  Used in conjunction with ``query_key``,
+this will only consider terms which in their last ``buffer_time`` had at least ``min_doc_count`` records.  Default 1.
+
 ``use_run_every_query_size``: By default the metric value is calculated over a ``buffer_time`` sized window. If this parameter is true
 the rule will use ``run_every`` as the calculation window.
 
@@ -1096,6 +1099,54 @@ bucket keys these usually round evenly to nearest minute, hour, day etc (dependi
 allign with the time elastalert runs, (This both avoid calculations on partial data, and ensures the very latest documents are included).
 See: https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-datehistogram-aggregation.html#_offset for a
 more comprehensive explaination.
+
+Spike Aggregation
+~~~~~~~~~~~~~~~~~~
+
+``spike_aggregation``: This rule matches when the value of a metric within the calculation window is ``spike_height`` times larger or smaller
+than during the previous time period. It uses two sliding windows to compare the current and reference metric values.
+We will call these two windows "reference" and "current".
+
+This rule requires:
+
+``metric_agg_key``: This is the name of the field over which the metric value will be calculated. The underlying type of this field must be
+supported by the specified aggregation type.  If using a scripted field via ``metric_agg_script``, this is the name for your scripted field
+
+``metric_agg_type``: The type of metric aggregation to perform on the ``metric_agg_key`` field. This must be one of 'min', 'max', 'avg',
+'sum', 'cardinality', 'value_count'.
+
+``spike_height``: The ratio of the metric value in the last ``timeframe`` to the previous ``timeframe`` that when hit
+will trigger an alert.
+
+``spike_type``: Either 'up', 'down' or 'both'. 'Up' meaning the rule will only match when the metric value is ``spike_height`` times
+higher. 'Down' meaning the reference metric value is ``spike_height`` higher than the current metric value. 'Both' will match either.
+
+``buffer_time``: The rule will average out the rate of events over this time period. For example, ``hours: 1`` means that the 'current'
+window will span from present to one hour ago, and the 'reference' window will span from one hour ago to two hours ago. The rule
+will not be active until the time elapsed from the first event is at least two timeframes. This is to prevent an alert being triggered
+before a baseline rate has been established. This can be overridden using ``alert_on_new_data``.
+
+Optional:
+
+``query_key``: Group metric calculations by this field. For each unique value of the ``query_key`` field, the metric will be calculated and
+evaluated separately against the 'reference'/'current' metric value and ``spike height``.
+
+``metric_agg_script``: A `Painless` formatted script describing how to calculate your metric on-the-fly::
+
+    metric_agg_key: myScriptedMetric
+    metric_agg_script:
+        script: doc['field1'].value * doc['field2'].value
+
+``threshold_ref``: The minimum value of the metric in the reference window for an alert to trigger. For example, if
+``spike_height: 3`` and ``threshold_ref: 10``, then the 'reference' window must have a metric value of 10 and the 'current' window at
+least three times that for an alert to be triggered.
+
+``threshold_cur``: The minimum value of the metric in the current window for an alert to trigger. For example, if
+``spike_height: 3`` and ``threshold_cur: 60``, then an alert will occur if the current window has a metric value greater than 60 and
+the reference window is less than a third of that value.
+
+``min_doc_count``: The minimum number of events in the current window needed for an alert to trigger.  Used in conjunction with ``query_key``,
+this will only consider terms which in their last ``buffer_time`` had at least ``min_doc_count`` records.  Default 1.
 
 Percentage Match
 ~~~~~~~~~~~~~~~~
@@ -1260,6 +1311,8 @@ ruletype_text is the string returned by RuleType.get_match_str.
 field_values will contain every key value pair included in the results from Elasticsearch. These fields include "@timestamp" (or the value of ``timestamp_field``),
 every key in ``include``, every key in ``top_count_keys``, ``query_key``, and ``compare_key``. If the alert spans multiple events, these values may
 come from an individual event, usually the one which triggers the alert.
+
+When using ``alert_text_args``, you can access nested fields and index into arrays. For example, if your match was ``{"data": {"ips": ["127.0.0.1", "12.34.56.78"]}}``, then by using ``"data.ips[1]"`` in ``alert_text_args``, it would replace value with ``"12.34.56.78"``. This can go arbitrarily deep into fields and will still work on keys that contain dots themselves.
 
 Command
 ~~~~~~~
@@ -1629,7 +1682,9 @@ Provide absolute address of the pciture, for example: http://some.address.com/im
 
 ``slack_alert_fields``: You can add additional fields to your slack alerts using this field. Specify the title using `title` and a value for the field using `value`. Additionally you can specify whether or not this field should be a `short` field using `short: true`.
 
-``slack_title_link``: You can add a link in your Slack notification by setting this to a valid URL.
+``slack_title``: Sets a title for the message, this shows up as a blue text at the start of the message
+
+``slack_title_link``: You can add a link in your Slack notification by setting this to a valid URL. Requires slack_title to be set.
 
 ``slack_timeout``: You can specify a timeout value, in seconds, for making communicating with Slac. The default is 10. If a timeout occurs, the alert will be retried next time elastalert cycles.
 
@@ -1752,6 +1807,15 @@ See https://v2.developer.pagerduty.com/docs/send-an-event-events-api-v2
 
 ``pagerduty_v2_payload_source_args``: If set, and ``pagerduty_v2_payload_source`` is a formattable string, Elastalert will format the source based on the provided array of fields from the rule or match.
 
+PagerTree
+~~~~~~~~~
+
+PagerTree alerter will trigger an incident to a predefined PagerTree integration url.
+
+The alerter requires the following options:
+
+``pagertree_integration_url``: URL generated by PagerTree for the integration.
+
 Exotel
 ~~~~~~
 
@@ -1805,7 +1869,7 @@ The alerter requires the following options:
 
 Optional:
 
-``victorops_entity_id``: The identity of the incident used by VictorOps to correlate incidents thoughout the alert lifecycle. If not defined, VictorOps will assign a random string to each alert.
+``victorops_entity_id``: The identity of the incident used by VictorOps to correlate incidents throughout the alert lifecycle. If not defined, VictorOps will assign a random string to each alert.
 
 ``victorops_entity_display_name``: Human-readable name of alerting entity to summarize incidents without affecting the life-cycle workflow.
 
@@ -1973,6 +2037,8 @@ Optional:
 
 ``http_post_static_payload``: Key:value pairs of static parameters to be sent, along with the Elasticsearch results. Put your authentication or other information here.
 
+``http_post_headers``: Key:value pairs of headers to be sent as part of the request.
+
 ``http_post_proxy``: URL of proxy, if required.
 
 ``http_post_all_values``: Boolean of whether or not to include every key value pair from the match in addition to those in http_post_payload and http_post_static_payload. Defaults to True if http_post_payload is not specified, otherwise False.
@@ -1987,6 +2053,8 @@ Example usage::
       ip: clientip
     http_post_static_payload:
       apikey: abc123
+    http_post_headers:
+      authorization: Basic 123dr3234
 
 
 Alerter
@@ -1999,6 +2067,16 @@ Example usage::
     jira_priority: $priority$
     jira_alert_owner: $owner$
 
+
+
+Line Notify
+~~~~~~~~~~~
+
+Line Notify will send notification to a Line application. The body of the notification is formatted the same as with other alerters.
+
+Required:
+
+``linenotify_access_token``: The access token that you got from https://notify-bot.line.me/my/
 
 theHive
 ~~~~~~~
@@ -2025,10 +2103,9 @@ Example usage::
        hive_host: http://localhost
        hive_port: <hive_port>
        hive_apikey: <hive_apikey>
-
-     hive_proxies:
-       http: ''
-       https: ''
+       hive_proxies:
+         http: ''
+         https: ''
 
       hive_alert_config:
         title: 'Title'  ## This will default to {rule[index]_rule[name]} if not provided
@@ -2045,3 +2122,16 @@ Example usage::
         - domain: "{match[field1]}_{rule[name]}"
         - domain: "{match[field]}"
         - ip: "{match[ip_field]}"
+
+
+Zabbix
+~~~~~~~~~~~
+
+Zabbix will send notification to a Zabbix server. The item in the host specified receive a 1 value for each hit. For example, if the elastic query produce 3 hits in the last execution of elastalert, three '1' (integer) values will be send from elastalert to Zabbix Server. If the query have 0 hits, any value will be sent.
+
+Required:
+
+``zbx_sender_host``: The address where zabbix server is running.
+``zbx_sender_port``: The port where zabbix server is listenning.
+``zbx_host``: This field setup the host in zabbix that receives the value sent by Elastalert.
+``zbx_item``: This field setup the item in the host that receives the value sent by Elastalert.
