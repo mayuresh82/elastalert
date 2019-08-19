@@ -38,7 +38,8 @@ class SyslogCheckerRule(RuleType):
                     continue
                 elastalert_logger.debug('Found a match for rule: {}: {}'.format(rule['id'], rule['name']))
                 point.update(m.groupdict())
-		point.setdefault('entity', 'None')
+                point.setdefault('entity', 'None')
+                point['status'] = rule.get('status', 'alerting')
                 sev = rule.get('severity')
                 if sev:
                     point['syslog_severity'] = sev
