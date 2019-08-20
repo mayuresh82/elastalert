@@ -20,7 +20,7 @@ class SyslogCheckerRule(RuleType):
         return rules
 
     def to_localtz(self, ts):
-	return ts.astimezone(tz.tzlocal())
+        return ts.astimezone(tz.tzlocal())
 
     def add_data(self, data):
         regex_rules = self.load_regex_rules()
@@ -29,8 +29,8 @@ class SyslogCheckerRule(RuleType):
         # check if any of the datapoints match any of the defined regexs
         matched = []
         for point in data:
-	    if 'syslog_message' not in point or 'syslog_severity' not in point or 'syslog_hostname' not in point:
-		continue
+            if 'syslog_message' not in point or 'syslog_severity' not in point or 'syslog_hostname' not in point:
+                continue
             for rule in regex_rules:
                 r = re.compile(rule['regex'])
                 m = r.match(point['syslog_message'])
@@ -46,13 +46,13 @@ class SyslogCheckerRule(RuleType):
                 # convert timestamp to RFC3339
                 dt = self.to_localtz(ts_to_dt(point['@timestamp']))
                 point['timestamp'] = dt.isoformat()
-		point['id'] = rule['id']
+                point['id'] = rule['id']
                 point['name'] = rule['name']
-		match = '{}:{}:{}'.format(
-		    point['name'],
-		    point['syslog_hostname'],
-		    point['entity']
-		)
-		if match not in matched:
+                match = '{}:{}:{}'.format(
+                    point['name'],
+                    point['syslog_hostname'],
+                    point['entity']
+                )
+                if match not in matched:
                     self.add_match(point)
                     matched.append(match)
