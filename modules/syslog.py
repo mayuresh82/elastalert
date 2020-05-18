@@ -9,6 +9,10 @@ from elastalert.util import ts_to_dt, elastalert_logger
 class SyslogCheckerRule(RuleType):
     required_options = set(['regex_file'])
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.regex_rules = self.load_regex_rules()
+
     def load_regex_rules(self):
         rules = None
         try:
@@ -23,15 +27,11 @@ class SyslogCheckerRule(RuleType):
         return ts.astimezone(tz.tzlocal())
 
     def add_data(self, data):
-        regex_rules = self.load_regex_rules()
-        if not regex_rules:
-            return
         # check if any of the datapoints match any of the defined regexs
-        matched = []
         for point in data:
             if 'syslog_message' not in point or 'syslog_severity' not in point or 'syslog_hostname' not in point:
                 continue
-            for rule in regex_rules:
+            for rule in self.regex_rules:
                 r = re.compile(rule['regex'])
                 m = r.match(point['syslog_message'])
                 if not m:
@@ -53,6 +53,16 @@ class SyslogCheckerRule(RuleType):
                     point['syslog_hostname'],
                     point['entity']
                 )
-                if match not in matched:
-                    self.add_match(point)
-                    matched.append(match)
+                if point['status'] == 'recover':
+                    # dont alert on points that alert and clear in the same cycle
+                    cleared = False
+                    for pt in self.matches:
+                        m = '{}:{}:{}'.format(pt['name'], pt['syslog_hostname'], pt['entity'])
+                        if m == match and pt['status'] == 'alerting':
+                            elastalert_logger.info('{} has recovered, removing'.format(m))
+                            self.matches.remove(pt)
+                            cleared = True
+                    if cleared:
+                        continue
+                elastalert_logger.info('{} on {}'.format(point['status'], match))
+                self.add_match(point)

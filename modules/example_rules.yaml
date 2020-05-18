@@ -1,0 +1,23 @@
+#- id: 1
+#  name: Neteng Bgp NLRI Mismatch
+#  regex: 'BGP_NLRI_MISMATCH: bgp_process_caps: mismatch NLRI with (?P<entity>.*?): .*'
+#  severity: info
+#
+#- id: 2
+#  name: Neteng Bgp Prefix Threshold Exceeded
+#  regex: 'BGP_PREFIX_THRESH_EXCEEDED: (?P<entity>.*?): .*'
+#
+- id: 3
+  name: Neteng Chassis Alert
+  regex: 'Alarm set: (?P<entity>\w+) color=RED.*'
+  status: alerting
+
+- id: 4
+  name: Neteng External BGP Down
+  regex: '^RPD_BGP_NEIGHBOR_STATE_CHANGED: BGP peer (?P<entity>.*?) changed state from Established to .*'
+  status: alerting
+
+- id: 5
+  name: Neteng External BGP Down
+  regex: '^RPD_BGP_NEIGHBOR_STATE_CHANGED: BGP peer (?P<entity>.*?) changed state from .* to Established.*'
+  status: recover
